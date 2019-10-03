@@ -8,9 +8,12 @@ const database = require('../../database');
 // Validation
 const checkRegistrationFields = require('../../validation/register');
 // Resend email validaiton
-const checkResendField = require("../../validation/resend");
-
-
+const checkResendField = require('../../validation/resend');
+// Secret key
+const key = require('../../utilities/keys');
+// Login validation
+const validateLoginInput = require('../../validation/login');
+const jwt = require("jsonwebtoken");
 // Register route
 router.post('/register', (req, res) => {
 	// Ensures that all entries by the user are valid
@@ -108,9 +111,9 @@ router.post('/verify/:token', (req, res) => {
 								errors.alreadyVerified = 'Email already verified. Please login to your account.';
 								res.status(400).json(errors);
 							}
-            }
-            /* If token is absent there could be two possibilities, the user did not register or the token has expired: */
+						}
 						else {
+							/* If token is absent there could be two possibilities, the user did not register or the token has expired: */
 							errors.email_invalid =
 								'Email invalid. Please check if you have registered with the correct email address or re-send the verification link to your email.';
 							res.status(400).json(errors);
@@ -129,72 +132,116 @@ router.post('/verify/:token', (req, res) => {
 });
 
 /* Add a 'resend_email' route with crypto.randomBytes again to generate a fresh token: */
-router.post("/resend_email", (req, res) => {
+router.post('/resend_email', (req, res) => {
+	const { errors, isValid } = checkResendField(req.body);
 
-  const { errors, isValid } = checkResendField(req.body);
+	if (!isValid) {
+		return res.status(400).json(errors);
+	}
 
-  if (!isValid) {
-    return res.status(400).json(errors);
-  }
-
-  let resendToken;
-  crypto.randomBytes(48, (err, buf) => {
-    if (err) throw err;
-    resendToken = buf
-      .toString("base64")
-      .replace(/\//g, "")
-      .replace(/\+/g, "-");
-    return resendToken;
-  });
-  /*
+	let resendToken;
+	crypto.randomBytes(48, (err, buf) => {
+		if (err) throw err;
+		resendToken = buf.toString('base64').replace(/\//g, '').replace(/\+/g, '-');
+		return resendToken;
+	});
+	/*
   add two database calls within the '/resend_email/ route:
   Using the email passed to the resend_route, check if the email exists and if email has not been verified. Send the token if so. */
 
-  database
-    .table("users")
-    .select("*")
-    .where({ email: req.body.email })
-    .then(data => {
-      if (data.length == 0) {
-        errors.invalid = "Invalid email address. Please register again!";
-        res.status(400).json(errors);
-      } else {
-        database
-          .table("users")
-          .returning(["email", "token"])
-          .where({ email: data[0].email, emailverified: "false" })
-          .update({ token: resendToken, createdtime: Date.now() })
-          .then(result => {
-            if (result.length) {
-              let to = [result[0].email];
+	database
+		.table('users')
+		.select('*')
+		.where({ email: req.body.email })
+		.then((data) => {
+			if (data.length == 0) {
+				errors.invalid = 'Invalid email address. Please register again!';
+				res.status(400).json(errors);
+			}
+			else {
+				database
+					.table('users')
+					.returning([
+						'email',
+						'token'
+					])
+					.where({ email: data[0].email, emailverified: 'false' })
+					.update({ token: resendToken, createdtime: Date.now() })
+					.then((result) => {
+						if (result.length) {
+							let to = [
+								result[0].email
+							];
 
-              let link =
-                "https://yourWebsite/v1/users/verify/" + result[0].token;
+							let link = 'https://yourWebsite/v1/users/verify/' + result[0].token;
 
-              let sub = "Confirm Registration";
+							let sub = 'Confirm Registration';
 
-              let content =
-                "<body><p>Please verify your email.</p> <a href=" +
-                link +
-                ">Verify email</a></body>";
-              sendEmail.Email(to, sub, content);
+							let content =
+								'<body><p>Please verify your email.</p> <a href=' + link + '>Verify email</a></body>';
+							sendEmail.Email(to, sub, content);
 
-              res.json("Email re-sent!");
-            } else {
-              errors.alreadyVerified =
-                "Email address has already been verified, please login.";
-              res.status(400).json(errors);
-            }
-          })
-          .catch(err => {
-            errors.db = "Bad request";
-            res.status(400).json(errors);
-          });
-      }
-    })
-    .catch(err => {
-      errors.db = "Bad request";
-      res.status(400).json(errors);
-    });
+							res.json('Email re-sent!');
+						}
+						else {
+							errors.alreadyVerified = 'Email address has already been verified, please login.';
+							res.status(400).json(errors);
+						}
+					})
+					.catch((err) => {
+						errors.db = 'Bad request';
+						res.status(400).json(errors);
+					});
+			}
+		})
+		.catch((err) => {
+			errors.db = 'Bad request';
+			res.status(400).json(errors);
+		});
+});
+
+/* Now start creating the route at the bottom of users.js (Not below module.exports of course) with your validation function: */
+
+// Login route
+router.post('/login', (req, res) => {
+	// Ensures that all entries by the user are valid
+	const { errors, isValid } = validateLoginInput(req.body);
+
+	if (!isValid) {
+		return res.status(400).json(errors);
+	}
+	else {
+		/* And add a database call that selects id, email and password if the email in the database matches the email being used to login and only if they have verified their email: */
+
+		database
+			.select('id', 'email', 'password')
+			.where('email', '=', req.body.email)
+			.andWhere('emailverified', true)
+			.from('users')
+			.then((data) => {
+				/* In the .then of the database call, we use a bcrypt function called compare to compare the password your user is attempting to log in with to the hashed password in your database: */
+
+				bcrypt.compare(req.body.password, data[0].password).then((isMatch) => {
+					if (isMatch) {
+						/* If the passwords match, we use jsonwebtoken's sign function to create a signed token using or secret key and set it to expire after 1 hour (use a lower number for even better security): */
+
+						const payload = { id: data[0].id, email: data[0].email };
+						jwt.sign(payload, key.secretOrKey, { expiresIn: 3600 }, (err, token) => {
+							/* This payload contains a users id and email. You can send anything you want in the payload but it is not recommended to send the password.
+
+Finally return the token with status 200 else return status 400 with a "Bad request" message */
+
+							res.status(200).json('Bearer ' + token);
+						});
+					}
+					else {
+						res.status(400).json('Bad request');
+					}
+				});
+			})
+			.catch((err) => {
+				res.status(400).json('Bad request');
+			});
+	}
 });
 module.exports = router;
