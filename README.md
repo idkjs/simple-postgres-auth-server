@@ -1,5 +1,7 @@
 # Knex/Postgres/AuthServer
 
+see:<https://www.simplecode.io/blog/create-a-rest-api-part-7-forgot-reset-password-routes/>
+
 ## Part 3
 
 To test, with your server running, open up postman and enter 'localhost:3000/v1/users/register' in the address bar. Select 'Body' -> 'raw' and 'JSON(application/json)' and enter in the following json. Make sure request is `POST` type.
