@@ -26,4 +26,4 @@ app.use("/v1/users", userRoutes);
 const port = process.env.PORT || 3000;
 
 // express returns an HTTP server
-app.listen(port, () => console.log("[Server] online " + new Date()));
+app.listen(port, () => console.log("[Server] online at http://localhost:"+ port + " "  + new Date()));
