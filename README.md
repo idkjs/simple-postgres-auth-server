@@ -203,3 +203,123 @@ Create and verify a new user.
 Then in postman  hit the login route with the email and password.
 
 ![rest-api-login-route-action](./rest-api-login-route-action.webp)
+
+## Part 7 - Forgot / Reset Password Routes
+
+### Database Setup
+
+You are going to need 3 new columns. You could delete and rebuild everything from scratch or you could alter your existing database and add the columns to it. Rebuilding the database is as simple as droping it and running the new schema. We will run through the altering method here.
+
+### Alter Table
+
+In `postico` in `simple_api` db, click `sqlQuery` icon and run this query:
+
+```sql
+ALTER TABLE users
+    ADD reset_password_token VARCHAR(128) UNIQUE,
+    ADD reset_password_expires BIGINT,
+    ADD reset_password_token_used BOOLEAN;
+```
+
+### Creating the Forgot Password Route
+
+We will `checkEmail.js` in our forgot password route to check if the user is using a valid email address.
+
+```js
+
+// simple-api/validation/checkEmail.js
+
+const Validator = require("validator");
+const ifEmpty = require("./checkForEmpty");
+
+module.exports = function validateResetInput(data) {
+  let errors = {};
+
+  data.email = !ifEmpty(data.email) ? data.email : "";
+
+  if (Validator.isEmpty(data.email)) {
+    errors.email = "Email is required";
+  }
+  if (!Validator.isEmail(data.email)) {
+    errors.email = " Email is invalid";
+  }
+  return {
+    errors,
+    isValid: ifEmpty(errors)
+  };
+};
+```
+
+### The Forgot Password Route
+
+At the top of `api/routes/users.js`, import your new email validator:
+`const validateResetInput = require("../../validation/checkEmail");`
+
+See notes in `./api/routes/users.js` `forgot` route.
+
+### Creating the Reset Password Route
+
+So now that your user has a reset token in their email, what do they do with it? Well they need to send it back, confirming that they are the owner of that email address. Next you'll add a route to do this with a little more validation.
+
+### Some More Validation
+
+We are going to have our user enter a new password (Because they forgot their old one right?). So create a new file called `newPassword.js` in your validation folder to check that their new password is a good one. See `validation/newPassword.js`.
+
+### The Reset Password Route
+
+Back in `api/routes/users.js`, import your new password validator and create another route to reset the password:
+
+By now [`./api/routes/users.js`](./api/routes/users.js) should look quite familiar as it is a mixture of some of our other routes. What is going on here:
+
+1. The route takes a token as a parameter
+
+2. Check that the token exists and has not been used before
+
+3. If token is good, validate the new password
+
+4. If pasword is valid, update the password for the user associated with the token
+
+5. Send an email to the user telling them about their password change.
+
+### Automatic Token Expiry
+
+Let's add a little extra security to our API and make sure our reset tokens are automatically removed from our database after a set period of time. Add the following function to the [`./utilities/tokenExpiry.js`](./utilities/tokenExpiry.js). Removes reset password tokens older than one hour so if the user doesn't use the reset password token within an hour we cancel it.
+
+```js
+setInterval(async function checkPasswordTokenValidity() {
+  await database
+    .select("id", "reset_password_expires")
+    .from("users")
+    .then(tokenExpiry => {
+      if (tokenExpiry) {
+        tokenExpiry.map(resetTime => {
+          let timeInInt = parseInt(resetTime.reset_password_expires);
+          if (Date.now() > timeInInt + 60000 * 60) {
+            database
+              .table("users")
+              .where("id", resetTime.id)
+              .update({ reset_password_token: null })
+              .then(res => res)
+              .catch(err => err);
+          }
+        });
+      }
+    })
+    .catch(err => console.log(err));
+}, 6000);
+```
+
+### Test it out with postman
+
+Now let's make sure it all works. First make a post request to your new /forgot route using an email that is already registered. You should see something like this:
+
+![postman-forgot-password-route](./postman-forgot-password-route.webp)
+
+Now using the token that was emailed to you (or you can grab it right from your users table in your database) make a post request to `/reset_password/:token`
+
+![postman-reset-password-route](./postman-reset-password-route.webp)
+
+If you try to enter your user's old password in postman, you should see a "bad request" message because that isn't their password anymore. Enter the new password and you should see:
+
+![postman-rest-api-login-new-password](./postman-rest-api-login-new-password.webp)
+

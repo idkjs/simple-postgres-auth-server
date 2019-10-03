@@ -27,7 +27,7 @@ console.log("mode: " + mode);
 let config = { key:process.env.AWS_ACCESS_KEY_ID, secret:process.env.AWS_ACCESS_KEY_ID, amazon: 'https://email.eu-west-1.amazonaws.com' };
 let config2 = { key:"AKIAJMSMQOT23VEI3WSQ", secret:"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", amazon: 'https://email.eu-west-1.amazonaws.com' };
 console.log(config2);
-function registrationEmail(to, sub, content) {
+function Email(to, sub, content) {
 	// let client = ses.createClient({ key: 1, secret: 2, amazon: 'https://email.eu-west-1.amazonaws.com' });
 	let client = ses.createClient({ key:"AKIAJMSMQOT23VEI3WSQ", secret:"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", amazon: 'https://email.eu-west-1.amazonaws.com' });
 	let from = 'lecoderie@gmail.com';
@@ -53,5 +53,5 @@ function registrationEmail(to, sub, content) {
 }
 // Export the Email function
 module.exports = {
-	registrationEmail
+	Email
 };

@@ -10,10 +10,8 @@ setInterval(async function checkRegistrationTokenValidity() {
         // Convert UTC time to an integer to compare with current time
         let timeInInt = parseInt(entryTime.createdtime);
 
-        // // Check if an hour has passed since the token was generated
-        // if (Date.now() > timeInInt + 60000 * 60) {
-        // Check if a minute has passed since the token was generated
-        if (Date.now() > timeInInt + 1000 * 60) {
+        // Check if an hour has passed since the token was generated
+        if (Date.now() > timeInInt + 60000 * 60) {
           database
             .table("users")
             .where("id", entryTime.id)
@@ -25,3 +23,26 @@ setInterval(async function checkRegistrationTokenValidity() {
     })
     .catch(err => console.log(err));
 }, 4000);
+
+// Removes reset password tokens older than one hour so if the user doesn't use the reset password token within an hour we cancel it.
+setInterval(async function checkPasswordTokenValidity() {
+  await database
+    .select("id", "reset_password_expires")
+    .from("users")
+    .then(tokenExpiry => {
+      if (tokenExpiry) {
+        tokenExpiry.map(resetTime => {
+          let timeInInt = parseInt(resetTime.reset_password_expires);
+          if (Date.now() > timeInInt + 60000 * 60) {
+            database
+              .table("users")
+              .where("id", resetTime.id)
+              .update({ reset_password_token: null })
+              .then(res => res)
+              .catch(err => err);
+          }
+        });
+      }
+    })
+    .catch(err => console.log(err));
+}, 6000);
