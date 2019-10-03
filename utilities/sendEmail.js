@@ -7,7 +7,7 @@ console.log("Region: ", aws.config.region);
 console.log("accessKeyId: ", aws.config.credentials.accessKeyId);
 console.log("secretAccessKey: ", aws.config.credentials.secretAccessKey);
 // Create an Email function
-function registrationEmail(to, sub, content) {
+function Email(to, sub, content) {
   let ses = new aws.SES();
 
   let from = "lecoderie@gmail.com"; // The email address added here must be verified in Amazon SES
@@ -39,5 +39,5 @@ function registrationEmail(to, sub, content) {
 }
 // Export the Email function
 module.exports = {
-  registrationEmail
+  Email
 };
