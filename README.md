@@ -22,3 +22,20 @@ output:
     "token": "PJyHmRihz71Vi8OKTbRFqPjlEfmpbrY4DNtnOrFsIbC50kQjztczcOKUOxWqyttm"
 }
 ```
+
+## Part 4 - Sending email
+
+For the example code to run, you have to:
+
+```sh
+export AWS_SDK_LOAD_CONFIG=true
+```
+
+Then your `./utilities/sendEmail.js` variables will log:
+
+```js
+console.log("Region: ", aws.config);
+console.log("Region: ", aws.config.region);
+console.log("accessKeyId: ", aws.config.credentials.accessKeyId);
+console.log("secretAccessKey: ", aws.config.credentials.secretAccessKey);
+```
