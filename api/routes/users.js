@@ -1,20 +1,24 @@
+// simple-api/api/routes/users.js
+
 const express = require('express');
 const router = express.Router();
 const bcrypt = require('bcryptjs');
-const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
-// const sendEmail = require("../../utilities/sendSes");
-const sendEmail = require('../../utilities/sendEmail');
+const crypto = require('crypto');
 const database = require('../../database');
-// Validation
+// Send email utility
+const sendEmail = require('../../utilities/sendEmail');
+// Registration validation
 const checkRegistrationFields = require('../../validation/register');
-// Resend email validaiton
-const checkResendField = require('../../validation/resend');
 // Secret key
 const key = require('../../utilities/keys');
 // Login validation
 const validateLoginInput = require('../../validation/login');
+// Resend email validaiton
+const checkResendField = require('../../validation/resend');
+// Forgot password validation
 const validateResetInput = require('../../validation/checkEmail');
+// Validate new passwords
 const validatePasswordChange = require('../../validation/newPassword');
 
 // Register route
@@ -36,7 +40,7 @@ router.post('/register', (req, res) => {
 			.replace(/\+/g, '-');
 		return token;
 	});
-	/* Next we'll add our database function which inserts the users email, password, registration date, token, the date the token was created, whether the user is verified or not and if the token has been used before. With a salt factor of 12 we hash the users password with bcrypt so that we don't just store it as plain text in the database. */
+
 	bcrypt.genSalt(12, (err, salt) => {
 		if (err) throw err;
 		bcrypt.hash(req.body.password1, salt, (err, hash) => {
@@ -83,11 +87,10 @@ router.post('/register', (req, res) => {
 		});
 	});
 });
-/* add another route that will take in the token that is sent when a user registers through your API. Under your '/register' route and a new post route for '/verify/:token' that will grab the token from the request parameters: */
+
 router.post('/verify/:token', (req, res) => {
 	const { token } = req.params;
 	const errors = {};
-	/* Add a database query that checks if the token exists and has not been used before. In which case, return an "Email verifed!" message and update the 'emailverifed' and 'tokenusedbefore' fields to true: */
 	database
 		.returning([
 			'email',
@@ -103,7 +106,6 @@ router.post('/verify/:token', (req, res) => {
 				res.json('Email verified! Please login to access your account');
 			}
 			else {
-				/* If the above query comes back empty, check the database again to see if the token exists and if 'emailverified' is true. In which case send a message stating 'Email already verified': */
 				database
 					.select('email', 'emailverified', 'tokenusedbefore')
 					.from('users')
@@ -116,27 +118,24 @@ router.post('/verify/:token', (req, res) => {
 							}
 						}
 						else {
-							/* If token is absent there could be two possibilities, the user did not register or the token has expired: */
 							errors.email_invalid =
 								'Email invalid. Please check if you have registered with the correct email address or re-send the verification link to your email.';
 							res.status(400).json(errors);
 						}
 					})
 					.catch((err) => {
-						console.log(err);
 						errors.db = 'Bad request';
 						res.status(400).json(errors);
 					});
 			}
 		})
 		.catch((err) => {
-			console.log(err);
 			errors.db = 'Bad request';
 			res.status(400).json(errors);
 		});
 });
 
-/* Add a 'resend_email' route with crypto.randomBytes again to generate a fresh token: */
+// Resend email route
 router.post('/resend_email', (req, res) => {
 	const { errors, isValid } = checkResendField(req.body);
 
@@ -150,9 +149,6 @@ router.post('/resend_email', (req, res) => {
 		resendToken = buf.toString('base64').replace(/\//g, '').replace(/\+/g, '-');
 		return resendToken;
 	});
-	/*
-  add two database calls within the '/resend_email/ route:
-  Using the email passed to the resend_route, check if the email exists and if email has not been verified. Send the token if so. */
 
 	database
 		.table('users')
@@ -205,8 +201,6 @@ router.post('/resend_email', (req, res) => {
 		});
 });
 
-/* Now start creating the route at the bottom of users.js (Not below module.exports of course) with your validation function: */
-
 // Login route
 router.post('/login', (req, res) => {
 	// Ensures that all entries by the user are valid
@@ -216,26 +210,16 @@ router.post('/login', (req, res) => {
 		return res.status(400).json(errors);
 	}
 	else {
-		/* And add a database call that selects id, email and password if the email in the database matches the email being used to login and only if they have verified their email: */
-
 		database
 			.select('id', 'email', 'password')
 			.where('email', '=', req.body.email)
 			.andWhere('emailverified', true)
 			.from('users')
 			.then((data) => {
-				/* In the .then of the database call, we use a bcrypt function called compare to compare the password your user is attempting to log in with to the hashed password in your database: */
-
 				bcrypt.compare(req.body.password, data[0].password).then((isMatch) => {
 					if (isMatch) {
-						/* If the passwords match, we use jsonwebtoken's sign function to create a signed token using or secret key and set it to expire after 1 hour (use a lower number for even better security): */
-
 						const payload = { id: data[0].id, email: data[0].email };
 						jwt.sign(payload, key.secretOrKey, { expiresIn: 3600 }, (err, token) => {
-							/* This payload contains a users id and email. You can send anything you want in the payload but it is not recommended to send the password.
-
-Finally return the token with status 200 else return status 400 with a "Bad request" message */
-
 							res.status(200).json('Bearer ' + token);
 						});
 					}
@@ -245,14 +229,12 @@ Finally return the token with status 200 else return status 400 with a "Bad requ
 				});
 			})
 			.catch((err) => {
-				console.log(err);
 				res.status(400).json('Bad request');
 			});
 	}
 });
 
-/* forgot password route
- */
+// Forgot password
 router.post('/forgot', function(req, res) {
 	const { errors, isValid } = validateResetInput(req.body);
 
@@ -266,10 +248,6 @@ router.post('/forgot', function(req, res) {
 		return resetToken;
 	});
 
-	/* Notice this route starts off like our '/register' and '/resend_email' routes where we validate the users input and if it's good, we pseudo-randomly generate a token with crypto.randomBytes. In production you might want to use something more secure like an RSA key pair.
-
-Now let's you'll use KnexJS again to make a database call to the users table and check if the email sent by the user exists: */
-
 	database
 		.table('users')
 		.select('*')
@@ -279,10 +257,6 @@ Now let's you'll use KnexJS again to make a database call to the users table and
 				res.status(400).json('Invalid email address');
 			}
 			else {
-				/* If the email doesn't exist in the database, return a 400 error with "Invalid email address" as our JSON response.
-
-If it does exist, make another call to the users table and update those 3 new columns we setup in the last step with a reset token and the current date: */
-
 				database
 					.table('users')
 					.where('email', emailData[0].email)
@@ -291,8 +265,6 @@ If it does exist, make another call to the users table and update those 3 new co
 						reset_password_expires: Date.now(),
 						reset_password_token_used: false
 					})
-					/* Finish the route off with a '.then' to send an email to the user with the token and add catch any errors that might come up: */
-
 					.then((done) => {
 						let to = [
 							req.body.email
@@ -320,48 +292,50 @@ If it does exist, make another call to the users table and update those 3 new co
 			res.status(400).json('Bad Request');
 		});
 });
-/* By now this route should look quite familiar as it is a mixture of some of our other routes. What is going on here: 1. The route takes a token as a parameter 2. Check that the token exists and has not been used before 3. If token is good, validate the new password 4. If pasword is valid, update the password for the user associated with the token 5. Send an email to the user telling them about their password change */
+
 // Reset password
-router.post("/reset_password/:token", function(req, res) {
-  const { token } = req.params;
-  database
-    .select(["id", "email"])
-    .from("users")
-    .where({ reset_password_token: token, reset_password_token_used: false })
-    .then(data => {
-      if (data.length > 0) {
-        const { errors, isValid } = validatePasswordChange(req.body);
+router.post('/reset_password/:token', function(req, res) {
+	const { token } = req.params;
+	database
+		.select([
+			'id',
+			'email'
+		])
+		.from('users')
+		.where({ reset_password_token: token, reset_password_token_used: false })
+		.then((data) => {
+			if (data.length > 0) {
+				const { errors, isValid } = validatePasswordChange(req.body);
 
-        if (!isValid) {
-          return res.status(400).json(errors);
-        } else {
-					bcrypt.genSalt(12, (err, salt) => {
-          if (err) throw err;
-          bcrypt.hash(req.body.password1, salt, (err, hash) => {
-            if (err) throw err;
-            database("users")
-              .returning("email")
-              .where({ id: data[0].id, email: data[0].email })
-              .update({ password: hash, reset_password_token_used: true })
-              .then(user => {
-                const subject = "Password change for your account.";
-                const content = `The password for your account registered under ${
-                  user[0]
-                } has been successfully changed.`;
-                res.json("Password successfully changed for " + user[0] + "!");
+				if (!isValid) {
+					return res.status(400).json(errors);
+				}
 
-                sendEmail.Email(to, subject, content);
-              })
-              .catch(err => {
-                res.status(400).json(errors);
-              });
-          });
-        })
-      } else {
-        res.status(400).json("Password reset error!");
-      }
-    })
-    .catch(err => res.status(400).json("Bad request"));
+				bcrypt.genSalt(12, (err, salt) => {
+					if (err) throw err;
+					bcrypt.hash(req.body.password1, salt, (err, hash) => {
+						if (err) throw err;
+						database('users')
+							.returning('email')
+							.where({ id: data[0].id, email: data[0].email })
+							.update({ password: hash, reset_password_token_used: true })
+							.then((user) => {
+								const subject = 'Password change for your account.';
+								const content = `The password for your account registered under ${user[0]} has been successfully changed.`;
+								sendEmail.Email(to, subject, content);
+								res.json('Password successfully changed for ' + user[0] + '!');
+							})
+							.catch((err) => {
+								res.status(400).json(errors);
+							});
+					});
+				});
+			}
+			else {
+				res.status(400).json('Password reset error!');
+			}
+		})
+		.catch((err) => res.status(400).json('Bad request'));
 });
 
 module.exports = router;
